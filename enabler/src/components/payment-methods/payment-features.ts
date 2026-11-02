@@ -165,12 +165,6 @@ export class PaymentFeatures {
     fieldset.style.border = "0";
     fieldset.style.padding = "0";
 
-    const legend = document.createElement("legend");
-    legend.textContent =
-      options.type === "CREDITCARD" ? "Credit/Debit Cards"
-        : options.type === "DIRECT_DEBIT_ACH" ? dictionary.accountNumber : "IBAN";
-    fieldset.appendChild(legend);
-
     const templateRadio = document.querySelector<HTMLInputElement>(
       'input[name="payment-selector-list"]',
     );
