@@ -138,6 +138,9 @@ export class PaymentFeatures {
       ? data.savedPayments.slice(0, 3)
       : [];
     if (payments.length) {
+      await this.waitForNativePaymentRadio();
+      if (this.businessOptions !== options) return;
+
       this.radios = this.renderSavedPayments(options, payments, dictionary);
       options.container.prepend(this.radios);
     }
@@ -155,6 +158,35 @@ export class PaymentFeatures {
     else options.container.appendChild(this.saveLabel);
     this.toggle();
   }
+  private async waitForNativePaymentRadio(timeoutMs = 3000): Promise<void> {
+    const selector = 'input[name="payment-selector-list"]';
+    if (document.querySelector<HTMLInputElement>(selector)) return;
+
+    await new Promise<void>((resolve) => {
+      let finished = false;
+      const observer = new MutationObserver(() => {
+        if (document.querySelector<HTMLInputElement>(selector)) finish();
+      });
+
+      const timer = window.setTimeout(finish, timeoutMs);
+
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        window.clearTimeout(timer);
+        observer.disconnect();
+        resolve();
+      };
+
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+
+      if (document.querySelector<HTMLInputElement>(selector)) finish();
+    });
+  }
+
   private renderSavedPayments(
     options: FeatureOptions,
     payments: Array<{ id: string; label: string }>,
