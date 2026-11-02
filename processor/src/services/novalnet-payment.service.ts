@@ -658,15 +658,20 @@ export class NovalnetPaymentService extends AbstractPaymentService {
         ? Math.max(999, configuredMinimum) : 999;
       const amountValid = orderTotal >= guaranteeMinimum;
 
-      const allowedCountries = businessGuarantee
-        ? this.getEuropeanRegionCountryCodes()
-        : ["DE", "AT", "CH"];
+	  const normalizedBillingCountry = String(billingCountry ?? "").toUpperCase();
+		
+	  const countryAllowed = Boolean(normalizedBillingCountry) &&
+		  (
+		    businessGuarantee
+		      ? this.getEuropeanRegionCountryCodes().includes(normalizedBillingCountry)
+		      : ["DE", "AT", "CH"].includes(normalizedBillingCountry)
+		  );
 
       const guaranteePayment =
         Boolean(sameAddress) &&
         Boolean(isEur) &&
         Boolean(amountValid) &&
-        Boolean(allowedCountries);
+        Boolean(countryAllowed);
 
       const isForceNonGuarantee =
         forceNonGuarantee !== undefined &&
