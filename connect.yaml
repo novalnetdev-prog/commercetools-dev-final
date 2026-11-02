@@ -199,7 +199,7 @@ deployAs:
           required: false
           default: "0"
         - key: NOVALNET_IDEAL_TEST_MODE
-          description: The iDEAL | Wero payment will be processed in test mode (1=Test, 0=Live)
+          description: The payment will be processed in the test mode therefore amount for this transaction will not be charged (1=Test, 0=Live)
           required: false
           default: "0"
         - key: NOVALNET_EPS_TEST_MODE
