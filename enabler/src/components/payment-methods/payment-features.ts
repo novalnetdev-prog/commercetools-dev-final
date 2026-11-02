@@ -118,31 +118,66 @@ export class PaymentFeatures {
     }
     this.businessOptions = options;
     this.businessRequest = undefined;
+    const savedPaymentsPlaceholder = document.createElement("fieldset");
+    savedPaymentsPlaceholder.style.border = "0";
+    savedPaymentsPlaceholder.style.padding = "0";
+    savedPaymentsPlaceholder.style.margin = "0";
+    savedPaymentsPlaceholder.setAttribute("aria-busy", "true");
+    options.container.prepend(savedPaymentsPlaceholder);
+
+    this.newFields = options.fields
+      .map((selector) => options.container.querySelector<HTMLElement>(selector))
+      .filter((element): element is HTMLElement => Boolean(element))
+      .map((element) => {
+        const displayElement = element.id === "novalnet_iframe"
+          ? element.parentElement ?? element
+          : element;
+        return { element: displayElement, display: displayElement.style.display };
+      });
+    for (const field of this.newFields) field.element.style.display = "none";
+
     const input = options.dob
       ? options.container.querySelector<HTMLInputElement>(options.dob) : null;
     this.dobState = input ? this.dobState?.input === input ? this.dobState : {
       input, field: input.parentElement, display: input.parentElement?.style.display ?? "",
       disabled: input.disabled, required: input.required,
     } : undefined;
-    const data = await this.loadFeatures(options);
-    if (this.businessOptions !== options) return;
+    let data: Features;
+    try {
+      data = await this.loadFeatures(options);
+    } catch (error) {
+      savedPaymentsPlaceholder.remove();
+      for (const field of this.newFields) field.element.style.display = field.display;
+      throw error;
+    }
+    if (this.businessOptions !== options) {
+      savedPaymentsPlaceholder.remove();
+      return;
+    }
     this.applyBusiness(data.business === true);
     this.watchBusiness(options);
-    if (!data.oneClick) return;
+    if (!data.oneClick) {
+      savedPaymentsPlaceholder.remove();
+      for (const field of this.newFields) field.element.style.display = field.display;
+      return;
+    }
     const dictionary = text[options.locale];
-    this.newFields = options.fields
-      .map((selector) => options.container.querySelector<HTMLElement>(selector))
-      .filter((element): element is HTMLElement => Boolean(element))
-      .map((element) => ({ element, display: element.style.display }));
     const payments = Array.isArray(data.savedPayments)
       ? data.savedPayments.slice(0, 3)
       : [];
     if (payments.length) {
+      this.radios = savedPaymentsPlaceholder;
       await this.waitForNativePaymentRadio();
-      if (this.businessOptions !== options) return;
+      if (this.businessOptions !== options) {
+        savedPaymentsPlaceholder.remove();
+        return;
+      }
 
-      this.radios = this.renderSavedPayments(options, payments, dictionary);
-      options.container.prepend(this.radios);
+      const rendered = this.renderSavedPayments(options, payments, dictionary);
+      savedPaymentsPlaceholder.replaceWith(rendered);
+      this.radios = rendered;
+    } else {
+      savedPaymentsPlaceholder.remove();
     }
     this.saveLabel = document.createElement("label");
     this.saveLabel.style.display = "block";
@@ -158,19 +193,18 @@ export class PaymentFeatures {
     else options.container.appendChild(this.saveLabel);
     this.toggle();
   }
-  
-  private async waitForNativePaymentRadio(timeoutMs = 3000): Promise<void> {
+  private async waitForNativePaymentRadio(timeoutMs = 10000): Promise<void> {
     const selector = 'input[name="payment-selector-list"]';
     if (document.querySelector<HTMLInputElement>(selector)) return;
-  
+
     await new Promise<void>((resolve) => {
       let finished = false;
       const observer = new MutationObserver(() => {
         if (document.querySelector<HTMLInputElement>(selector)) finish();
       });
-  
+
       let timer: number | undefined;
-  
+
       const finish = () => {
         if (finished) return;
         finished = true;
@@ -178,14 +212,14 @@ export class PaymentFeatures {
         observer.disconnect();
         resolve();
       };
-  
+
       timer = window.setTimeout(finish, timeoutMs);
-  
+
       observer.observe(document.documentElement, {
         childList: true,
         subtree: true,
       });
-  
+
       if (document.querySelector<HTMLInputElement>(selector)) finish();
     });
   }
@@ -199,11 +233,13 @@ export class PaymentFeatures {
     const fieldset = document.createElement("fieldset");
     fieldset.style.border = "0";
     fieldset.style.padding = "0";
+    fieldset.style.margin = "0";
 
     const templateRadio = document.querySelector<HTMLInputElement>(
       'input[name="payment-selector-list"]',
     );
     const templateLabel = templateRadio?.closest("label");
+    const templateRow = templateLabel?.parentElement;
 
     [
       ...payments,
@@ -217,9 +253,15 @@ export class PaymentFeatures {
     ].forEach((payment, index) => {
       let label: HTMLLabelElement;
       let radio: HTMLInputElement;
+      let row: HTMLElement;
 
-      if (templateLabel) {
-        label = templateLabel.cloneNode(true) as HTMLLabelElement;
+      if (templateLabel && templateRow) {
+        row = templateRow.cloneNode(true) as HTMLElement;
+        row.removeAttribute("data-test");
+        label = row.querySelector("label") as HTMLLabelElement;
+        if (!label) {
+          throw new Error("Unable to reuse the commercetools payment option markup.");
+        }
         label.removeAttribute("for");
 
         const clonedRadio = label.querySelector<HTMLInputElement>('input[type="radio"]');
@@ -252,6 +294,7 @@ export class PaymentFeatures {
           label.appendChild(document.createTextNode(payment.label));
         }
       } else {
+        row = document.createElement("div");
         label = document.createElement("label");
         label.style.display = "block";
         radio = document.createElement("input");
@@ -267,15 +310,24 @@ export class PaymentFeatures {
       radio.addEventListener("change", () => this.toggle());
 
       if (!payment.id) {
-        fieldset.appendChild(label);
+        if (templateLabel && templateRow) {
+          fieldset.appendChild(row);
+        } else {
+          row.appendChild(label);
+          fieldset.appendChild(row);
+        }
         return;
       }
 
-      const row = document.createElement("div");
-      row.style.display = "flex";
-      row.style.alignItems = "center";
-      row.style.gap = "8px";
-      row.style.justifyContent = "flex-start";
+      if (templateLabel && templateRow) {
+        row.style.display = "flex";
+        row.style.alignItems = "center";
+        row.style.gap = "8px";
+      } else {
+        row.style.display = "flex";
+        row.style.alignItems = "center";
+        row.style.gap = "8px";
+      }
 
       const remove = document.createElement("button");
       remove.type = "button";
@@ -345,7 +397,11 @@ export class PaymentFeatures {
         }
       });
 
-      row.append(label, remove);
+      if (templateLabel && templateRow) {
+        row.appendChild(remove);
+      } else {
+        row.append(label, remove);
+      }
       fieldset.appendChild(row);
     });
 
