@@ -33,8 +33,19 @@ const text = {
     deleteError: "Die gespeicherten Zahlungsdaten konnten nicht gelöscht werden. Bitte versuchen Sie es erneut.",
   },
 };
+type NativeRadioClasses = { outer: string; inner: string; radio: string; text: string };
+type RadioParts = {
+  row: HTMLDivElement;
+  outer: HTMLDivElement;
+  inner: HTMLDivElement;
+  input: HTMLInputElement;
+  text: HTMLDivElement;
+};
+
 export class PaymentFeatures {
   private radios?: HTMLFieldSetElement;
+  private nativeRadioObserver?: MutationObserver;
+  private radioParts: RadioParts[] = [];
   private checkbox?: HTMLInputElement;
   private newFields: Array<{ element: HTMLElement; display: string }> = [];
   private saveLabel?: HTMLLabelElement;
@@ -114,6 +125,9 @@ export class PaymentFeatures {
   }
   async mount(options: FeatureOptions): Promise<void> {
     this.businessObserver?.disconnect();
+    this.nativeRadioObserver?.disconnect();
+    this.nativeRadioObserver = undefined;
+    this.radioParts = [];
     if (this.businessOptions && this.businessListener) {
       this.businessOptions.container.removeEventListener("focusin", this.businessListener);
       this.businessOptions.container.removeEventListener("pointerenter", this.businessListener);
@@ -152,6 +166,7 @@ export class PaymentFeatures {
     if (payments.length) {
       this.radios = this.renderSavedPayments(options, payments, dictionary);
       options.container.prepend(this.radios);
+      this.watchNativeRadio(options);
     }
     this.saveLabel = document.createElement("label");
     this.saveLabel.className = featureStyles.consent;
@@ -168,6 +183,99 @@ export class PaymentFeatures {
     this.toggle();
   }
   
+  private readNativeRadioClasses(): NativeRadioClasses | undefined {
+    if (typeof document.querySelector !== "function") return undefined;
+    const nativeRadio = document.querySelector<HTMLInputElement>(
+      'input[type="radio"][name="payment-selector-list"]',
+    );
+    const inner = nativeRadio?.parentElement;
+    const outer = inner?.parentElement;
+    if (!nativeRadio?.className || !inner?.className || !outer) return undefined;
+    const text = inner.querySelector<HTMLElement>(":scope > span > div");
+    return {
+      outer: outer.className,
+      inner: inner.className,
+      radio: nativeRadio.className,
+      text: text?.className ?? "",
+    };
+  }
+
+
+  private applyNativeRadioClasses(): boolean {
+    const classes = this.readNativeRadioClasses();
+    if (!classes || !this.radioParts.length) return false;
+    for (const part of this.radioParts) {
+      part.row.className = `${featureStyles.row} ${featureStyles.native}`;
+      part.outer.className = `${featureStyles.outer} ${classes.outer}`;
+      part.inner.className = `${featureStyles.inner} ${classes.inner}`;
+      part.input.className = `${featureStyles.radio} ${classes.radio}`;
+      part.text.className = `${featureStyles.text} ${classes.text}`;
+    }
+    return true;
+  }
+
+  private watchNativeRadio(options: FeatureOptions): void {
+    this.nativeRadioObserver?.disconnect();
+    this.nativeRadioObserver = undefined;
+    if (this.applyNativeRadioClasses()) return;
+    if (typeof MutationObserver === "undefined" || !document.documentElement) return;
+    const observer = new MutationObserver(() => {
+      if (this.businessOptions !== options || this.radios?.isConnected === false) {
+        observer.disconnect();
+        if (this.nativeRadioObserver === observer) this.nativeRadioObserver = undefined;
+        return;
+      }
+      if (this.applyNativeRadioClasses()) {
+        observer.disconnect();
+        if (this.nativeRadioObserver === observer) this.nativeRadioObserver = undefined;
+      }
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    this.nativeRadioObserver = observer;
+
+    if (this.applyNativeRadioClasses()) {
+      observer.disconnect();
+      this.nativeRadioObserver = undefined;
+    }
+  }
+
+  private createRadioLabel(
+    row: HTMLDivElement,
+    options: FeatureOptions,
+    value: string,
+    displayName: string,
+    checked: boolean,
+  ): HTMLLabelElement {
+    const label = document.createElement("label");
+    label.className = featureStyles.label;
+
+    const outer = document.createElement("div");
+    outer.className = featureStyles.outer;
+    const inner = document.createElement("div");
+    inner.className = featureStyles.inner;
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.className = featureStyles.radio;
+    radio.name = `nn_saved_${options.type}`;
+    radio.value = value;
+    radio.checked = checked;
+    radio.addEventListener("change", () => this.toggle());
+
+    const content = document.createElement("span");
+    const textContainer = document.createElement("div");
+    textContainer.className = featureStyles.text;
+    const name = document.createElement("span");
+    name.className = featureStyles.name;
+    name.textContent = displayName; 
+    textContainer.appendChild(name);
+    content.appendChild(textContainer);
+    inner.append(radio, content);
+    outer.appendChild(inner);
+    label.appendChild(outer);
+    this.radioParts.push({ row, outer, inner, input: radio, text: textContainer });
+    return label;
+  }
+
   private renderSavedPayments(
     options: FeatureOptions,
     payments: Array<{ id: string; label: string }>,
@@ -176,28 +284,22 @@ export class PaymentFeatures {
   ): HTMLFieldSetElement {
     const fieldset = document.createElement("fieldset");
     fieldset.className = featureStyles.options;
-    fieldset.setAttribute("aria-label", options.locale === "de" ? "Gespeicherte Zahlungsarten" : "Saved payment methods");
+    fieldset.setAttribute(
+      "aria-label",
+      options.locale === "de" ? "Gespeicherte Zahlungsarten" : "Saved payment methods",
+    );
+    this.radioParts = [];
 
     payments.forEach((payment, index) => {
       const row = document.createElement("div");
       row.className = featureStyles.row;
-
-      const label = document.createElement("label");
-      label.className = featureStyles.label;
-      const radio = document.createElement("input");
-      radio.type = "radio";
-      radio.className = featureStyles.radio;
-      radio.name = `nn_saved_${options.type}`;
-      radio.value = payment.id;
-      radio.checked = selectedId !== undefined
-        ? payment.id === selectedId
-        : index === 0;
-      radio.addEventListener("change", () => this.toggle());
-
-      const name = document.createElement("span");
-      name.className = featureStyles.name;
-      name.textContent = payment.label;
-      label.append(radio, name);
+      const label = this.createRadioLabel(
+        row,
+        options,
+        payment.id,
+        payment.label,
+        selectedId !== undefined ? payment.id === selectedId : index === 0,
+      );
 
       const remove = document.createElement("button");
       remove.type = "button";
@@ -214,9 +316,8 @@ export class PaymentFeatures {
         remove.disabled = true;
         this.deleteError?.remove();
         this.deleteError = undefined;
-
-
-        const selectedBeforeDelete = this.radios?.querySelector<HTMLInputElement>("input:checked")?.value;
+        const selectedBeforeDelete =
+          this.radios?.querySelector<HTMLInputElement>("input:checked")?.value;
 
         try {
           const result = await fetch(`${options.processorUrl}/deleteSavedPayment`, {
@@ -233,6 +334,7 @@ export class PaymentFeatures {
           if (!result.ok) throw new Error("Saved payment deletion failed.");
 
           const refreshed = await this.loadFeatures(options);
+          if (this.businessOptions !== options) return;
           const refreshedPayments = Array.isArray(refreshed.savedPayments)
             ? refreshed.savedPayments.slice(0, 3)
             : [];
@@ -242,10 +344,9 @@ export class PaymentFeatures {
               selectedBeforeDelete === ""
                 ? ""
                 : selectedBeforeDelete && selectedBeforeDelete !== payment.id &&
-                  refreshedPayments.some((item) => item.id === selectedBeforeDelete)
+                    refreshedPayments.some((item) => item.id === selectedBeforeDelete)
                   ? selectedBeforeDelete
                   : refreshedPayments[0].id;
-
             const replacement = this.renderSavedPayments(
               options,
               refreshedPayments,
@@ -254,11 +355,14 @@ export class PaymentFeatures {
             );
             this.radios?.replaceWith(replacement);
             this.radios = replacement;
+            this.applyNativeRadioClasses();
           } else {
             this.radios?.remove();
             this.radios = undefined;
+            this.radioParts = [];
+            this.nativeRadioObserver?.disconnect();
+            this.nativeRadioObserver = undefined;
           }
-
           this.toggle();
         } catch {
           remove.disabled = false;
@@ -276,24 +380,18 @@ export class PaymentFeatures {
 
     const newRow = document.createElement("div");
     newRow.className = featureStyles.row;
-    const newLabel = document.createElement("label");
-    newLabel.className = featureStyles.label;
-    const newRadio = document.createElement("input");
-    newRadio.type = "radio";
-    newRadio.className = featureStyles.radio;
-    newRadio.name = `nn_saved_${options.type}`;
-    newRadio.value = "";
-    newRadio.checked = selectedId === "";
-    newRadio.addEventListener("change", () => this.toggle());
-    const newName = document.createElement("span");
-    newName.className = featureStyles.name;
-    newName.textContent = options.type === "CREDITCARD" ? dictionary.card : dictionary.account;
-    newLabel.append(newRadio, newName);
-    newRow.append(newLabel);
+    const newLabel = this.createRadioLabel(
+      newRow,
+      options,
+      "",
+      options.type === "CREDITCARD" ? dictionary.card : dictionary.account,
+      selectedId === "",
+    );
+    newRow.appendChild(newLabel);
     fieldset.appendChild(newRow);
-
     return fieldset;
   }
+
   private toggle(): void {
     const saved = Boolean(this.savedPaymentId);
     for (const field of this.newFields)
