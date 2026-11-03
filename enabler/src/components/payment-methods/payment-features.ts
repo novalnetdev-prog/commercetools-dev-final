@@ -1,4 +1,4 @@
-import featureStyles from "../../../style/paymentFeatures.module.scss";
+import featureStyles from "../../style/paymentFeatures.module.scss";
 
 type Features = {
   business: boolean;
