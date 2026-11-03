@@ -1,3 +1,5 @@
+import featureStyles from "../../../style/paymentFeatures.module.scss";
+
 type Features = {
   business: boolean;
   oneClick: boolean;
@@ -116,71 +118,43 @@ export class PaymentFeatures {
       this.businessOptions.container.removeEventListener("focusin", this.businessListener);
       this.businessOptions.container.removeEventListener("pointerenter", this.businessListener);
     }
+
+    for (const field of this.newFields) field.element.style.display = field.display;
+    this.radios?.remove();
+    this.saveLabel?.remove();
+    this.deleteError?.remove();
+    this.radios = undefined;
+    this.saveLabel = undefined;
+    this.checkbox = undefined;
+    this.deleteError = undefined;
+    this.newFields = [];
     this.businessOptions = options;
     this.businessRequest = undefined;
-    const savedPaymentsPlaceholder = document.createElement("fieldset");
-    savedPaymentsPlaceholder.style.border = "0";
-    savedPaymentsPlaceholder.style.padding = "0";
-    savedPaymentsPlaceholder.style.margin = "0";
-    savedPaymentsPlaceholder.setAttribute("aria-busy", "true");
-    options.container.prepend(savedPaymentsPlaceholder);
-
-    this.newFields = options.fields
-      .map((selector) => options.container.querySelector<HTMLElement>(selector))
-      .filter((element): element is HTMLElement => Boolean(element))
-      .map((element) => {
-        const displayElement = element.id === "novalnet_iframe"
-          ? element.parentElement ?? element
-          : element;
-        return { element: displayElement, display: displayElement.style.display };
-      });
-    for (const field of this.newFields) field.element.style.display = "none";
-
     const input = options.dob
       ? options.container.querySelector<HTMLInputElement>(options.dob) : null;
     this.dobState = input ? this.dobState?.input === input ? this.dobState : {
       input, field: input.parentElement, display: input.parentElement?.style.display ?? "",
       disabled: input.disabled, required: input.required,
     } : undefined;
-    let data: Features;
-    try {
-      data = await this.loadFeatures(options);
-    } catch (error) {
-      savedPaymentsPlaceholder.remove();
-      for (const field of this.newFields) field.element.style.display = field.display;
-      throw error;
-    }
-    if (this.businessOptions !== options) {
-      savedPaymentsPlaceholder.remove();
-      return;
-    }
+    const data = await this.loadFeatures(options);
+    if (this.businessOptions !== options) return;
     this.applyBusiness(data.business === true);
     this.watchBusiness(options);
-    if (!data.oneClick) {
-      savedPaymentsPlaceholder.remove();
-      for (const field of this.newFields) field.element.style.display = field.display;
-      return;
-    }
+    if (!data.oneClick) return;
     const dictionary = text[options.locale];
+    this.newFields = options.fields
+      .map((selector) => options.container.querySelector<HTMLElement>(selector))
+      .filter((element): element is HTMLElement => Boolean(element))
+      .map((element) => ({ element, display: element.style.display }));
     const payments = Array.isArray(data.savedPayments)
       ? data.savedPayments.slice(0, 3)
       : [];
     if (payments.length) {
-      this.radios = savedPaymentsPlaceholder;
-      await this.waitForNativePaymentRadio();
-      if (this.businessOptions !== options) {
-        savedPaymentsPlaceholder.remove();
-        return;
-      }
-
-      const rendered = this.renderSavedPayments(options, payments, dictionary);
-      savedPaymentsPlaceholder.replaceWith(rendered);
-      this.radios = rendered;
-    } else {
-      savedPaymentsPlaceholder.remove();
+      this.radios = this.renderSavedPayments(options, payments, dictionary);
+      options.container.prepend(this.radios);
     }
     this.saveLabel = document.createElement("label");
-    this.saveLabel.style.display = "block";
+    this.saveLabel.className = featureStyles.consent;
     this.checkbox = document.createElement("input");
     this.checkbox.type = "checkbox";
     this.checkbox.checked = false;
@@ -193,37 +167,7 @@ export class PaymentFeatures {
     else options.container.appendChild(this.saveLabel);
     this.toggle();
   }
-  private async waitForNativePaymentRadio(timeoutMs = 10000): Promise<void> {
-    const selector = 'input[name="payment-selector-list"]';
-    if (document.querySelector<HTMLInputElement>(selector)) return;
-
-    await new Promise<void>((resolve) => {
-      let finished = false;
-      const observer = new MutationObserver(() => {
-        if (document.querySelector<HTMLInputElement>(selector)) finish();
-      });
-
-      let timer: number | undefined;
-
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        if (timer !== undefined) window.clearTimeout(timer);
-        observer.disconnect();
-        resolve();
-      };
-
-      timer = window.setTimeout(finish, timeoutMs);
-
-      observer.observe(document.documentElement, {
-        childList: true,
-        subtree: true,
-      });
-
-      if (document.querySelector<HTMLInputElement>(selector)) finish();
-    });
-  }
-
+  
   private renderSavedPayments(
     options: FeatureOptions,
     payments: Array<{ id: string; label: string }>,
@@ -231,110 +175,35 @@ export class PaymentFeatures {
     selectedId?: string,
   ): HTMLFieldSetElement {
     const fieldset = document.createElement("fieldset");
-    fieldset.style.border = "0";
-    fieldset.style.padding = "0";
-    fieldset.style.margin = "0";
+    fieldset.className = featureStyles.options;
+    fieldset.setAttribute("aria-label", options.locale === "de" ? "Gespeicherte Zahlungsarten" : "Saved payment methods");
 
-    const templateRadio = document.querySelector<HTMLInputElement>(
-      'input[name="payment-selector-list"]',
-    );
-    const templateLabel = templateRadio?.closest("label");
-    const templateRow = templateLabel?.parentElement;
+    payments.forEach((payment, index) => {
+      const row = document.createElement("div");
+      row.className = featureStyles.row;
 
-    [
-      ...payments,
-      {
-        id: "",
-        label:
-          options.type === "CREDITCARD"
-            ? dictionary.card
-            : dictionary.account,
-      },
-    ].forEach((payment, index) => {
-      let label: HTMLLabelElement;
-      let radio: HTMLInputElement;
-      let row: HTMLElement;
-
-      if (templateLabel && templateRow) {
-        row = templateRow.cloneNode(true) as HTMLElement;
-        row.removeAttribute("data-test");
-        label = row.querySelector("label") as HTMLLabelElement;
-        if (!label) {
-          throw new Error("Unable to reuse the commercetools payment option markup.");
-        }
-        label.removeAttribute("for");
-
-        const clonedRadio = label.querySelector<HTMLInputElement>('input[type="radio"]');
-        if (!clonedRadio) {
-          throw new Error("Unable to reuse the commercetools payment radio markup.");
-        }
-
-        radio = clonedRadio;
-        radio.id = "";
-        radio.name = `nn_saved_${options.type}`;
-        radio.value = payment.id;
-        radio.checked = payment.id
-          ? payment.id === (selectedId ?? payments[0]?.id)
-          : !selectedId && !payments.length;
-
-        label.querySelectorAll<HTMLElement>("[id]").forEach((element) => {
-          if (element !== radio) element.removeAttribute("id");
-        });
-
-        const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
-        const textNodes: Text[] = [];
-        let node: Node | null;
-        while ((node = walker.nextNode())) {
-          if (node.textContent?.trim()) textNodes.push(node as Text);
-        }
-        if (textNodes.length) {
-          textNodes[0].textContent = payment.label;
-          for (const textNode of textNodes.slice(1)) textNode.textContent = "";
-        } else {
-          label.appendChild(document.createTextNode(payment.label));
-        }
-      } else {
-        row = document.createElement("div");
-        label = document.createElement("label");
-        label.style.display = "block";
-        radio = document.createElement("input");
-        radio.type = "radio";
-        radio.name = `nn_saved_${options.type}`;
-        radio.value = payment.id;
-        radio.checked = selectedId
-          ? payment.id === selectedId
-          : index === 0;
-        label.append(radio, document.createTextNode(` ${payment.label}`));
-      }
-
+      const label = document.createElement("label");
+      label.className = featureStyles.label;
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.className = featureStyles.radio;
+      radio.name = `nn_saved_${options.type}`;
+      radio.value = payment.id;
+      radio.checked = selectedId
+        ? payment.id === selectedId
+        : index === 0;
       radio.addEventListener("change", () => this.toggle());
 
-      if (!payment.id) {
-        if (templateLabel && templateRow) {
-          fieldset.appendChild(row);
-        } else {
-          row.appendChild(label);
-          fieldset.appendChild(row);
-        }
-        return;
-      }
-
-      if (templateLabel && templateRow) {
-        row.style.display = "flex";
-        row.style.alignItems = "center";
-        row.style.gap = "8px";
-      } else {
-        row.style.display = "flex";
-        row.style.alignItems = "center";
-        row.style.gap = "8px";
-      }
+      const name = document.createElement("span");
+      name.className = featureStyles.name;
+      name.textContent = payment.label; 
+      label.append(radio, name);
 
       const remove = document.createElement("button");
       remove.type = "button";
+      remove.className = featureStyles.delete;
       remove.title = dictionary.delete;
       remove.setAttribute("aria-label", `${dictionary.delete}: ${payment.label}`);
-      remove.style.cssText =
-        "border:0;background:transparent;cursor:pointer;padding:4px;color:inherit;width:auto;flex:0 0 auto;margin:0;display:inline-flex;align-items:center;";
       remove.innerHTML =
         '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg>';
 
@@ -397,11 +266,7 @@ export class PaymentFeatures {
         }
       });
 
-      if (templateLabel && templateRow) {
-        row.appendChild(remove);
-      } else {
-        row.append(label, remove);
-      }
+      row.append(label, remove);
       fieldset.appendChild(row);
     });
 
