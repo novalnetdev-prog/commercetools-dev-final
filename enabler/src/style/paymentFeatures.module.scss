@@ -5,26 +5,27 @@
   border: 0;
   min-width: 0;
   padding: 0;
-  margin: 0 0 1rem;
+  margin: 0;
   font-family: var(--ctc-font-family, Roboto, sans-serif);
 }
 
 .row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  min-height: 2.75rem;
-  padding: 0.375rem 0;
+  justify-content: flex-start;
+  gap: 1.25rem;
+  min-height: 3.5rem;
+  padding: 0 0 0 2rem;
   margin: 0;
   width: 100%;
   box-sizing: border-box;
 }
 
-.label {
+.row > .label {
   display: inline-flex;
   align-items: center;
   gap: 0.75rem;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   width: auto;
   margin: 0;
@@ -35,13 +36,13 @@
 }
 
 .name {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
 /* Draw the radio consistently, including before the host CSS/DOM finishes. */
-.label > .radio {
+.row .label > .radio {
   -webkit-appearance: none;
   appearance: none;
   box-sizing: border-box;
@@ -52,31 +53,32 @@
   height: 1.25rem;
   margin: 0;
   padding: 0;
-  background: transparent;
-  border: 2px solid #717982;
+  background: #fff;
+  border: 1px solid #999;
   border-radius: 50%;
   cursor: pointer;
   vertical-align: middle;
 }
 
-.label > .radio::before {
+.row .label > .radio::before {
   content: '';
-  width: 0.625rem;
-  height: 0.625rem;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
-  background: var(--ctc-radio, #186ec3);
+  background: white;
   transform: scale(0);
 }
 
-.label > .radio:checked {
+.row .label > .radio:checked {
+  background: var(--ctc-radio, #186ec3);
   border-color: var(--ctc-radio, #186ec3);
 }
 
-.label > .radio:checked::before {
+.row .label > .radio:checked::before {
   transform: scale(1);
 }
 
-.label > .radio:focus-visible,
+.row .label > .radio:focus-visible,
 .delete:focus-visible {
   outline: 2px solid var(--ctc-radio, #186ec3);
   outline-offset: 3px;
@@ -86,12 +88,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 2rem;
-  width: 2rem;
-  height: 2rem;
+  flex: 0 0 1.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
   border: 0;
   margin: 0;
-  padding: 0.375rem;
+  padding: 0.1875rem;
   color: inherit;
   background: transparent;
   cursor: pointer;
