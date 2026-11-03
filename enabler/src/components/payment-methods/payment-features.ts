@@ -189,14 +189,14 @@ export class PaymentFeatures {
       radio.className = featureStyles.radio;
       radio.name = `nn_saved_${options.type}`;
       radio.value = payment.id;
-      radio.checked = selectedId
+      radio.checked = selectedId !== undefined
         ? payment.id === selectedId
         : index === 0;
       radio.addEventListener("change", () => this.toggle());
 
       const name = document.createElement("span");
       name.className = featureStyles.name;
-      name.textContent = payment.label; 
+      name.textContent = payment.label;
       label.append(radio, name);
 
       const remove = document.createElement("button");
@@ -215,7 +215,8 @@ export class PaymentFeatures {
         this.deleteError?.remove();
         this.deleteError = undefined;
 
-        const selectedBeforeDelete = this.savedPaymentId;
+
+        const selectedBeforeDelete = this.radios?.querySelector<HTMLInputElement>("input:checked")?.value;
 
         try {
           const result = await fetch(`${options.processorUrl}/deleteSavedPayment`, {
@@ -238,10 +239,12 @@ export class PaymentFeatures {
 
           if (refreshedPayments.length) {
             const nextSelectedId =
-              selectedBeforeDelete && selectedBeforeDelete !== payment.id &&
-              refreshedPayments.some((item) => item.id === selectedBeforeDelete)
-                ? selectedBeforeDelete
-                : refreshedPayments[0].id;
+              selectedBeforeDelete === ""
+                ? ""
+                : selectedBeforeDelete && selectedBeforeDelete !== payment.id &&
+                  refreshedPayments.some((item) => item.id === selectedBeforeDelete)
+                  ? selectedBeforeDelete
+                  : refreshedPayments[0].id;
 
             const replacement = this.renderSavedPayments(
               options,
@@ -269,6 +272,25 @@ export class PaymentFeatures {
       row.append(label, remove);
       fieldset.appendChild(row);
     });
+
+
+    const newRow = document.createElement("div");
+    newRow.className = featureStyles.row;
+    const newLabel = document.createElement("label");
+    newLabel.className = featureStyles.label;
+    const newRadio = document.createElement("input");
+    newRadio.type = "radio";
+    newRadio.className = featureStyles.radio;
+    newRadio.name = `nn_saved_${options.type}`;
+    newRadio.value = "";
+    newRadio.checked = selectedId === "";
+    newRadio.addEventListener("change", () => this.toggle());
+    const newName = document.createElement("span");
+    newName.className = featureStyles.name;
+    newName.textContent = options.type === "CREDITCARD" ? dictionary.card : dictionary.account;
+    newLabel.append(newRadio, newName);
+    newRow.append(newLabel);
+    fieldset.appendChild(newRow);
 
     return fieldset;
   }
